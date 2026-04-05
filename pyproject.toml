@@ -16,6 +16,7 @@ dependencies = [
   "pillow>=11.2",
   "pydantic>=2.10",
   "pyyaml>=6.0.2",
+  "soundfile>=0.13.1",
   "torch>=2.6",
   "torchvision>=0.21",
   "transformers>=4.57",

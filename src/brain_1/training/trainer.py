@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import tempfile
 from pathlib import Path
 
 import torch
@@ -161,9 +162,9 @@ def run_training(config: TrainingConfig) -> None:
                 if val_metrics["pearson"] > best_val_pearson:
                     best_val_pearson = float(val_metrics["pearson"])
                     best_checkpoint_path = output_dir / "best.pt"
-                    torch.save(
+                    _save_checkpoint(
                         {
-                            "model_state_dict": model.state_dict(),
+                            "model_state_dict": _cpu_state_dict(model),
                             "train_config": train_config,
                             "model_config": model_config,
                             "best_val_metrics": val_metrics,
@@ -178,9 +179,9 @@ def run_training(config: TrainingConfig) -> None:
                 break
 
     checkpoint_path = output_dir / "final.pt"
-    torch.save(
+    _save_checkpoint(
         {
-            "model_state_dict": model.state_dict(),
+            "model_state_dict": _cpu_state_dict(model),
             "train_config": train_config,
             "model_config": model_config,
         },
@@ -266,3 +267,19 @@ def _evaluate_model(model, dataloader, device: torch.device) -> dict[str, float]
     metrics["loss"] = total_loss / max(total_batches, 1)
     model.train()
     return metrics
+
+
+def _cpu_state_dict(model: nn.Module) -> dict[str, torch.Tensor]:
+    return {key: value.detach().cpu() for key, value in model.state_dict().items()}
+
+
+def _save_checkpoint(payload: dict, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False, suffix=".pt") as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        torch.save(payload, tmp_path, _use_new_zipfile_serialization=False)
+        tmp_path.replace(path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)

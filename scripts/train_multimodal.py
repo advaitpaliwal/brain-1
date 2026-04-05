@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import tempfile
 from pathlib import Path
 
 import torch
@@ -46,6 +47,22 @@ def evaluate(model, dataloader, device: torch.device) -> dict[str, float]:
     metrics["loss"] = total_loss / max(total_batches, 1)
     model.train()
     return metrics
+
+
+def cpu_state_dict(model) -> dict[str, torch.Tensor]:
+    return {key: value.detach().cpu() for key, value in model.state_dict().items()}
+
+
+def save_checkpoint(payload: dict, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False, suffix=".pt") as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        torch.save(payload, tmp_path, _use_new_zipfile_serialization=False)
+        tmp_path.replace(path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
 
 
 def main() -> None:
@@ -141,12 +158,12 @@ def main() -> None:
                 )
                 if val_metrics["pearson"] > best_val_pearson:
                     best_val_pearson = float(val_metrics["pearson"])
-                    torch.save({"model_state_dict": model.state_dict(), "config": config}, output_dir / "best.pt")
+                    save_checkpoint({"model_state_dict": cpu_state_dict(model), "config": config}, output_dir / "best.pt")
             step += 1
             if step >= max_steps:
                 break
 
-    torch.save({"model_state_dict": model.state_dict(), "config": config}, output_dir / "final.pt")
+    save_checkpoint({"model_state_dict": cpu_state_dict(model), "config": config}, output_dir / "final.pt")
     (output_dir / "history.json").write_text(json.dumps(history, indent=2), encoding="utf-8")
     print(f"Saved outputs to {output_dir}")
 
