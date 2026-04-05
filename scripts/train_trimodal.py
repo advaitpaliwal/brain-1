@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 
 from brain_1.datasets.trimodal import TrimodalFeatureDataset, collate_trimodal_batch
 from brain_1.models.trimodal_brain_model import TrimodalBrainModel, TrimodalBrainModelConfig
-from brain_1.training.losses import masked_mse
+from brain_1.training.losses import combined_regression_loss, masked_mse
 from brain_1.training.metrics import regression_metrics
 
 
@@ -101,6 +101,7 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     best_val_pearson = float("-inf")
     history: list[dict[str, float | int]] = []
+    loss_cfg = config.get("loss", {})
 
     max_steps = int(config["optimization"]["max_steps"])
     log_every = int(config["training"]["log_every"])
@@ -119,7 +120,13 @@ def main() -> None:
             )
             target = batch["target"].to(device)
             target_mask = batch["target_mask"].to(device)
-            loss = masked_mse(pred, target, mask=target_mask)
+            loss, loss_parts = combined_regression_loss(
+                pred,
+                target,
+                mask=target_mask,
+                mse_weight=float(loss_cfg.get("mse_weight", 1.0)),
+                correlation_weight=float(loss_cfg.get("correlation_weight", 0.0)),
+            )
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), float(config["training"]["grad_clip_norm"]))
@@ -127,8 +134,19 @@ def main() -> None:
 
             if step % log_every == 0 or step == max_steps - 1:
                 metrics = regression_metrics(pred.detach().cpu(), target.detach().cpu())
-                history.append({"step": step, "train_loss": float(loss.item()), "train_mse": float(metrics["mse"]), "train_pearson": float(metrics["pearson"])})
-                print(f"step={step:05d} loss={loss.item():.4f} mse={metrics['mse']:.4f} pearson={metrics['pearson']:.4f}")
+                history.append({
+                    "step": step,
+                    "train_loss": float(loss.item()),
+                    "train_mse_loss": float(loss_parts["mse_loss"]),
+                    "train_corr_loss": float(loss_parts["corr_loss"]),
+                    "train_mse": float(metrics["mse"]),
+                    "train_pearson": float(metrics["pearson"]),
+                })
+                print(
+                    f"step={step:05d} loss={loss.item():.4f} mse={metrics['mse']:.4f} "
+                    f"pearson={metrics['pearson']:.4f} mse_loss={loss_parts['mse_loss']:.4f} "
+                    f"corr_loss={loss_parts['corr_loss']:.4f}"
+                )
 
             if step % eval_every == 0 or step == max_steps - 1:
                 val_metrics = evaluate(model, val_loader, device)

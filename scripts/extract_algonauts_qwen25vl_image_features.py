@@ -53,6 +53,12 @@ def main() -> None:
         action="store_true",
         help="Store one feature tensor per stimulus",
     )
+    parser.add_argument(
+        "--max-frames",
+        type=int,
+        default=0,
+        help="Optional max number of frames per stimulus",
+    )
     args = parser.parse_args()
 
     frame_manifest = Path(args.frame_manifest).expanduser().resolve()
@@ -76,6 +82,8 @@ def main() -> None:
 
         if not feature_path.exists():
             frame_paths = sorted(Path(row["frame_dir"]).glob("*.png"))
+            if args.max_frames > 0:
+                frame_paths = frame_paths[: args.max_frames]
             features: list[torch.Tensor] = []
             with torch.no_grad():
                 for start in range(0, len(frame_paths), args.batch_size):

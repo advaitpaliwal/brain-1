@@ -16,7 +16,7 @@ from brain_1.datasets.common import (
     collate_temporal_batch,
 )
 from brain_1.models import BrainModel, BrainModelConfig
-from brain_1.training.losses import masked_mse
+from brain_1.training.losses import combined_regression_loss, masked_mse
 from brain_1.training.metrics import regression_metrics
 
 
@@ -35,6 +35,7 @@ def run_training(config: TrainingConfig) -> None:
 
     optimization = train_config["optimization"]
     data_config = train_config["data"]
+    loss_config = train_config.get("loss", {})
     training_cfg = train_config["training"]
     backbone = model_config["backbone"]
     temporal_adapter = model_config["temporal_adapter"]
@@ -120,7 +121,13 @@ def run_training(config: TrainingConfig) -> None:
                 subject_index=subject_index,
                 padding_mask=padding_mask,
             )
-            loss = masked_mse(pred, target, mask=target_mask)
+            loss, loss_parts = combined_regression_loss(
+                pred,
+                target,
+                mask=target_mask,
+                mse_weight=float(loss_config.get("mse_weight", 1.0)),
+                correlation_weight=float(loss_config.get("correlation_weight", 0.0)),
+            )
 
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
@@ -132,12 +139,15 @@ def run_training(config: TrainingConfig) -> None:
                 metrics = regression_metrics(pred.detach().cpu(), target.detach().cpu())
                 print(
                     f"step={step:05d} loss={loss.item():.4f} "
-                    f"mse={metrics['mse']:.4f} pearson={metrics['pearson']:.4f}"
+                    f"mse={metrics['mse']:.4f} pearson={metrics['pearson']:.4f} "
+                    f"mse_loss={loss_parts['mse_loss']:.4f} corr_loss={loss_parts['corr_loss']:.4f}"
                 )
                 history.append(
                     {
                         "step": step,
                         "train_loss": float(loss.item()),
+                        "train_mse_loss": float(loss_parts["mse_loss"]),
+                        "train_corr_loss": float(loss_parts["corr_loss"]),
                         "train_mse": float(metrics["mse"]),
                         "train_pearson": float(metrics["pearson"]),
                     }
