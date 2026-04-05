@@ -22,11 +22,14 @@ class MultimodalBrainModelConfig:
     subject_count: int = 32
     subject_embedding_dim: int = 64
     hrf_kernel_size: int = 5
+    modality_dropout_p: float = 0.3
+    unseen_subject_p: float = 0.1
 
 
 class MultimodalBrainModel(nn.Module):
     def __init__(self, config: MultimodalBrainModelConfig) -> None:
         super().__init__()
+        self.config = config
         self.text_projector = nn.Sequential(
             nn.LayerNorm(config.text_dim),
             nn.Linear(config.text_dim, config.hidden_size),
@@ -41,6 +44,7 @@ class MultimodalBrainModel(nn.Module):
         self.video_gain = nn.Parameter(torch.tensor(1.0))
         self.subject_embedding = nn.Embedding(config.subject_count, config.subject_embedding_dim)
         self.subject_projection = nn.Linear(config.subject_embedding_dim, config.hidden_size)
+        self.unseen_subject_projection = nn.Linear(config.hidden_size, config.hidden_size)
         self.temporal_adapter = TemporalAdapter(
             hidden_size=config.hidden_size,
             layers=config.adapter_layers,
@@ -59,8 +63,22 @@ class MultimodalBrainModel(nn.Module):
     ) -> torch.Tensor:
         text_hidden = self.text_projector(text_features) * self.text_gain
         video_hidden = self.video_projector(video_features) * self.video_gain
+
+        if self.training:
+            text_mask = torch.rand(text_hidden.shape[0], device=text_hidden.device) < self.config.modality_dropout_p
+            video_mask = torch.rand(video_hidden.shape[0], device=video_hidden.device) < self.config.modality_dropout_p
+            all_masked = text_mask & video_mask
+            if all_masked.any():
+                video_mask = video_mask & ~all_masked
+            text_hidden = text_hidden.masked_fill(text_mask[:, None, None], 0.0)
+            video_hidden = video_hidden.masked_fill(video_mask[:, None, None], 0.0)
+
         sequence = text_hidden + video_hidden
         subject_bias = self.subject_projection(self.subject_embedding(subject_index)).unsqueeze(1)
+        if self.training:
+            unseen_mask = torch.rand(subject_bias.shape[0], device=subject_bias.device) < self.config.unseen_subject_p
+            unseen_bias = self.unseen_subject_projection(sequence.mean(dim=1)).unsqueeze(1)
+            subject_bias = torch.where(unseen_mask[:, None, None], unseen_bias, subject_bias)
         sequence = sequence + subject_bias
         sequence = self.temporal_adapter(sequence, padding_mask=padding_mask)
         sequence = self.hrf(sequence)

@@ -379,6 +379,24 @@ with held-out season-6 validation:
 }
 ```
 
+Detailed held-out metrics for the same checkpoint:
+
+```json
+{
+  "loss": 0.36763607084751126,
+  "mean_parcel_pearson": 0.08506268232068397,
+  "mean_subject_pearson": 0.10692047700285912,
+  "subject_scores": {
+    "sub-01": 0.10051405429840088,
+    "sub-02": 0.10669812560081482,
+    "sub-03": 0.11564770340919495,
+    "sub-05": 0.10482202470302582
+  },
+  "num_parcels": 1000,
+  "num_rows": 199
+}
+```
+
 Comparison files:
 
 ```text
