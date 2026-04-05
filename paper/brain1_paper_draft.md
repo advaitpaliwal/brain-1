@@ -224,6 +224,54 @@ This is not a final multimodal verdict, but it is already informative:
 - video works, but is weaker than text and audio with the current SigLIP-based setup
 - naive concatenation is not enough to get multimodal gains
 
+### 6.4 Four-stimulus modality comparison
+
+We further benchmarked unimodal and multimodal variants on a held-out split formed from four real
+movie segments from season 1 of `Friends`, training on the `a` segments and evaluating on the held-out
+`b` segments across the four public Algonauts subjects.
+
+Results:
+
+| Model | Held-out Pearson | Held-out MSE |
+| --- | ---: | ---: |
+| Text only | 0.1005 | 0.3713 |
+| Audio only | 0.0979 | 0.3909 |
+| Video only | 0.0598 | 0.3927 |
+| Text + Audio (concat) | 0.0403 | 0.3933 |
+| Text + Audio (fusion) | 0.0805 | 0.3915 |
+| Text + Video (concat) | 0.0428 | 0.3944 |
+| Text + Video (fusion) | 0.0374 | 0.4550 |
+| Text + Audio + Video (trimodal) | 0.0679 | 0.3921 |
+
+The main conclusion from this table is that the current bottleneck lies in multimodal fusion and
+visual representation quality rather than in the parcel regression head itself. Audio already carries
+predictive signal nearly as strong as text on this held-out slice, while adding video with the current
+encoder and fusion stack degrades performance rather than improving it.
+
+### 6.5 Detailed subject and parcel evaluation
+
+For the current best safe checkpoint on the `s1-s5 -> s6` benchmark, we also computed more
+TRIBE-like detailed metrics:
+
+```json
+{
+  "loss": 0.36763607084751126,
+  "mean_parcel_pearson": 0.08506268232068397,
+  "mean_subject_pearson": 0.10692047700285912,
+  "subject_scores": {
+    "sub-01": 0.10051405429840088,
+    "sub-02": 0.10669812560081482,
+    "sub-03": 0.11564770340919495,
+    "sub-05": 0.10482202470302582
+  },
+  "num_parcels": 1000,
+  "num_rows": 199
+}
+```
+
+This confirms that the benchmark signal is not driven by a single subject and that the current model
+produces stable but still modest parcel-level predictivity on unseen season-6 stimuli.
+
 ## 7. Discussion
 
 The current `brain-1` results suggest that the main bottleneck is not the regression head. The bottleneck is representation quality and multimodal alignment, especially for video. The text branch is already competitive enough to produce stable held-out signal on season-level splits. Audio is promising. Video is functioning, but still underpowered relative to language and sound. That pattern implies that the next meaningful gain will likely come from a stronger video encoder or a better cross-modal integration strategy rather than from additional MLP or transformer depth in the parcel head.

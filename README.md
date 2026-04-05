@@ -333,6 +333,31 @@ Current takeaway:
 - current multimodal fusion is not yet good enough; the next win is likely a better video
   encoder or better cross-modal fusion, not more of the same projector stack
 
+## 4-stimulus modality benchmark with audio
+
+Using four real `Friends` clips (`s01e01a`, `s01e01b`, `s01e02a`, `s01e02b`) with train on the
+`a` clips and validation on the held-out `b` clips:
+
+- text-only best Pearson: `0.1005`
+- audio-only best Pearson: `0.0979`
+- video-only best Pearson: `0.0598`
+- text+video concat best Pearson: `0.0428`
+- text+video fusion best Pearson: `0.0374`
+- text+audio+video trimodal best Pearson: `0.0726`
+
+Summary file:
+
+```text
+artifacts/quad_multimodal_extended_summary.json
+```
+
+Current takeaway:
+
+- text is still the single best branch on this split
+- audio is surprisingly close and currently much stronger than video
+- the current multimodal fusion stack is not yet beating the strongest unimodal branch
+- the next best investment is likely stronger visual features and better trimodal alignment
+
 ## 4-stimulus text/video/audio benchmark
 
 Using four real `Friends` clips (`s01e01a`, `s01e01b`, `s01e02a`, `s01e02b`) with train on the

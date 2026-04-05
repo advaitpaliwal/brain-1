@@ -21,12 +21,18 @@ def encode_images(images, processor, model, device: torch.device) -> torch.Tenso
         pixel_values=pixel_values,
         image_grid_thw=image_grid_thw,
     )
+    while isinstance(outputs, (tuple, list)):
+        outputs = outputs[0]
     if hasattr(outputs, "pooler_output") and outputs.pooler_output is not None:
         feats = outputs.pooler_output
     elif hasattr(outputs, "last_hidden_state"):
         feats = outputs.last_hidden_state.mean(dim=1)
     else:
-        feats = outputs[0].mean(dim=1)
+        feats = outputs
+    while isinstance(feats, (tuple, list)):
+        feats = feats[0]
+    if feats.ndim == 3:
+        feats = feats.mean(dim=1)
     return feats.detach().cpu()
 
 

@@ -9,6 +9,7 @@ From the local paper copy at `/Users/advaitpaliwal/Downloads/tribev2.pdf`:
 - TRIBE v2 is a tri-modal model for `video`, `audio`, and `language`.
 - It is trained on `over 1,000 hours of fMRI` across `720 subjects`.
 - It reports first place performance on the `Algonauts 2025` competition.
+- In the local paper's competition table, the reported top score is `0.2146 ± 0.0312`.
 - It is evaluated across multiple datasets, not just one narrow train/val split.
 
 ## What brain-1 currently is
@@ -45,6 +46,7 @@ artifacts/algonauts_text_baseline_s1_s5_all4_tuned_b2/best.pt
 
 - `brain-1` is not yet a fair apples-to-apples replacement for TRIBE v2.
 - It is a valid clean-room baseline on the same dataset family.
+- On the current held-out benchmark, `brain-1` (`0.1053`) is still well below the local-paper TRIBE competition score (`0.2146 ± 0.0312`), though these are not matched evaluation protocols.
 - The strongest current `brain-1` result is still text-only.
 - Audio is competitive on small held-out slices.
 - Video is working, but weaker than text and audio with the current visual encoder.
