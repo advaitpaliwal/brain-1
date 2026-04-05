@@ -333,6 +333,41 @@ Current takeaway:
 - current multimodal fusion is not yet good enough; the next win is likely a better video
   encoder or better cross-modal fusion, not more of the same projector stack
 
+## Current best checkpoint
+
+Across the real held-out benchmarks so far, the current best checkpoint is still:
+
+```text
+artifacts/algonauts_text_baseline_s1_s5_all4_tuned_b2/best.pt
+```
+
+with held-out season-6 validation:
+
+```json
+{
+  "mse": 0.3683369755744934,
+  "pearson": 0.10527008771896362,
+  "loss": 0.36837509214878084,
+  "num_rows": 199
+}
+```
+
+## 4-stimulus text/video benchmark
+
+Using four real `Friends` clips (`s01e01a`, `s01e01b`, `s01e02a`, `s01e02b`) with train on the
+`a` clips and validation on the held-out `b` clips:
+
+- text-only best Pearson: `0.1005`
+- video-only best Pearson: `0.0598`
+- text+video naive concat best Pearson: `0.0428`
+- text+video modality-aware fusion best Pearson: `0.0374`
+
+Summary file:
+
+```text
+artifacts/quad_multimodal_summary.json
+```
+
 ## Immediate next steps
 
 1. Replace dummy feature generation with real dataset manifests and precomputed features.
