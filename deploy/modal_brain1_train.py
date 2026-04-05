@@ -36,7 +36,7 @@ def run_text_benchmark() -> dict[str, str]:
     import subprocess
 
     model_config = f"{REMOTE_REPO}/configs/model.yaml"
-    train_config = f"{REMOTE_REPO}/configs/algonauts_text_train_s1_s5_all4_tuned_b2_modal.yaml"
+    train_config = f"{REMOTE_REPO}/configs/algonauts_text_train_s1_s5_all4_tuned_b2_long_modal.yaml"
     env = os.environ.copy()
     env["PYTHONPATH"] = f"{REMOTE_REPO}/src"
     bundle = f"{REMOTE_DATA}/bundles/brain1_text_bundle.tar"
@@ -72,7 +72,7 @@ def run_text_benchmark() -> dict[str, str]:
         env=env,
     )
     return {
-        "output_dir": f"{REMOTE_DATA}/artifacts/modal_algonauts_text_s1_s5_all4_tuned_b2",
+        "output_dir": f"{REMOTE_DATA}/artifacts/modal_algonauts_text_s1_s5_all4_tuned_b2_long",
         "train_manifest": f"{REMOTE_DATA}/manifests/algonauts2025_text_train_s1_s5_all4.modal.jsonl",
         "val_manifest": f"{REMOTE_DATA}/manifests/algonauts2025_text_val_s6_all4.modal.jsonl",
     }
