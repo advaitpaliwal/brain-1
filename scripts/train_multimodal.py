@@ -1,0 +1,155 @@
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+import torch
+import yaml
+from torch import nn
+from torch.utils.data import DataLoader
+
+from brain_1.datasets.multimodal import MultimodalFeatureDataset, collate_multimodal_batch
+from brain_1.models.multimodal_brain_model import MultimodalBrainModel, MultimodalBrainModelConfig
+from brain_1.training.losses import masked_mse
+from brain_1.training.metrics import regression_metrics
+
+
+def load_yaml(path: Path) -> dict:
+    with path.open("r", encoding="utf-8") as handle:
+        return yaml.safe_load(handle)
+
+
+def evaluate(model, dataloader, device: torch.device) -> dict[str, float]:
+    model.eval()
+    preds: list[torch.Tensor] = []
+    targets: list[torch.Tensor] = []
+    total_loss = 0.0
+    total_batches = 0
+    with torch.no_grad():
+        for batch in dataloader:
+            pred = model(
+                text_features=batch["text_features"].to(device),
+                video_features=batch["video_features"].to(device),
+                subject_index=batch["subject_index"].to(device),
+                padding_mask=batch["padding_mask"].to(device),
+            )
+            target = batch["target"].to(device)
+            target_mask = batch["target_mask"].to(device)
+            loss = masked_mse(pred, target, mask=target_mask)
+            total_loss += float(loss.item())
+            total_batches += 1
+            mask = target_mask.detach().cpu().bool()
+            preds.append(pred.detach().cpu()[mask])
+            targets.append(target.detach().cpu()[mask])
+    metrics = regression_metrics(torch.cat(preds, dim=0), torch.cat(targets, dim=0))
+    metrics["loss"] = total_loss / max(total_batches, 1)
+    model.train()
+    return metrics
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Train the multimodal brain model.")
+    parser.add_argument("--config", required=True, help="Training config YAML")
+    args = parser.parse_args()
+
+    config = load_yaml(Path(args.config))
+    train_dataset = MultimodalFeatureDataset(config["data"]["manifest_path"])
+    val_path = config["data"].get("val_manifest_path")
+    val_dataset = MultimodalFeatureDataset(val_path) if val_path else None
+
+    batch_size = int(config["optimization"]["batch_size"])
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_multimodal_batch)
+    val_loader = (
+        DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_multimodal_batch)
+        if val_dataset is not None
+        else None
+    )
+
+    sample = train_dataset[0]
+    subject_count = max(32, len({record.subject_index for record in train_dataset.records}))
+    model = MultimodalBrainModel(
+        MultimodalBrainModelConfig(
+            text_dim=sample["text_features"].shape[-1],
+            video_dim=sample["video_features"].shape[-1],
+            hidden_size=1024,
+            adapter_layers=4,
+            adapter_heads=8,
+            parcel_dim=sample["target"].shape[-1],
+            subject_count=subject_count,
+            subject_embedding_dim=64,
+            hrf_kernel_size=5,
+        )
+    )
+
+    device = torch.device(config["training"].get("device", "cpu"))
+    model.to(device)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=float(config["optimization"]["lr"]),
+        weight_decay=float(config["optimization"]["weight_decay"]),
+    )
+
+    output_dir = Path(config["training"]["output_dir"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    best_val_pearson = float("-inf")
+    history: list[dict[str, float | int]] = []
+
+    max_steps = int(config["optimization"]["max_steps"])
+    log_every = int(config["training"]["log_every"])
+    eval_every = int(config["training"]["eval_every"])
+    step = 0
+    model.train()
+
+    while step < max_steps:
+        for batch in train_loader:
+            pred = model(
+                text_features=batch["text_features"].to(device),
+                video_features=batch["video_features"].to(device),
+                subject_index=batch["subject_index"].to(device),
+                padding_mask=batch["padding_mask"].to(device),
+            )
+            target = batch["target"].to(device)
+            target_mask = batch["target_mask"].to(device)
+            loss = masked_mse(pred, target, mask=target_mask)
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), float(config["training"]["grad_clip_norm"]))
+            optimizer.step()
+
+            if step % log_every == 0 or step == max_steps - 1:
+                metrics = regression_metrics(pred.detach().cpu(), target.detach().cpu())
+                history.append(
+                    {
+                        "step": step,
+                        "train_loss": float(loss.item()),
+                        "train_mse": float(metrics["mse"]),
+                        "train_pearson": float(metrics["pearson"]),
+                    }
+                )
+                print(
+                    f"step={step:05d} loss={loss.item():.4f} "
+                    f"mse={metrics['mse']:.4f} pearson={metrics['pearson']:.4f}"
+                )
+
+            if val_loader is not None and (step % eval_every == 0 or step == max_steps - 1):
+                val_metrics = evaluate(model, val_loader, device)
+                history.append({"step": step, **{f"val_{k}": float(v) for k, v in val_metrics.items()}})
+                print(
+                    f"val step={step:05d} loss={val_metrics['loss']:.4f} "
+                    f"mse={val_metrics['mse']:.4f} pearson={val_metrics['pearson']:.4f}"
+                )
+                if val_metrics["pearson"] > best_val_pearson:
+                    best_val_pearson = float(val_metrics["pearson"])
+                    torch.save({"model_state_dict": model.state_dict(), "config": config}, output_dir / "best.pt")
+            step += 1
+            if step >= max_steps:
+                break
+
+    torch.save({"model_state_dict": model.state_dict(), "config": config}, output_dir / "final.pt")
+    (output_dir / "history.json").write_text(json.dumps(history, indent=2), encoding="utf-8")
+    print(f"Saved outputs to {output_dir}")
+
+
+if __name__ == "__main__":
+    main()

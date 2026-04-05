@@ -1,0 +1,20 @@
+datasets:
+  algonauts2025:
+    enabled: true
+    root: data/algonauts2025
+    modalities: [text, audio, video]
+    target: schaefer1000
+  bold_moments:
+    enabled: true
+    root: data/bold_moments
+    modalities: [video]
+    target: schaefer1000
+  lebel2023:
+    enabled: true
+    root: data/lebel2023
+    modalities: [text, audio]
+    target: schaefer1000
+
+time_grid_hz: 2.0
+target_tr_seconds: 1.49
+parcel_count: 1000

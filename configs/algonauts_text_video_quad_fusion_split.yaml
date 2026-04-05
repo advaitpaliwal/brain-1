@@ -1,0 +1,19 @@
+seed: 1337
+
+data:
+  manifest_path: data/manifests/algonauts2025_text_video_quad_multimodal_train_split.jsonl
+  val_manifest_path: data/manifests/algonauts2025_text_video_quad_multimodal_val_split.jsonl
+
+optimization:
+  batch_size: 2
+  lr: 1.0e-4
+  weight_decay: 0.01
+  max_steps: 200
+  warmup_steps: 0
+
+training:
+  device: mps
+  log_every: 10
+  eval_every: 25
+  grad_clip_norm: 1.0
+  output_dir: artifacts/algonauts_text_video_quad_fusion_split

@@ -1,0 +1,27 @@
+seed: 1337
+
+data:
+  manifest_path: data/manifests/algonauts2025_text_train_s1_s5_all4.jsonl
+  val_manifest_path: data/manifests/algonauts2025_text_val_s6_all4.jsonl
+  synthetic_fallback_size: 0
+  synthetic_seq_len: 0
+
+optimization:
+  batch_size: 4
+  lr: 1.0e-4
+  weight_decay: 0.01
+  max_steps: 500
+  warmup_steps: 0
+
+loss:
+  mse_weight: 1.0
+  correlation_weight: 0.1
+
+training:
+  device: mps
+  mixed_precision: "no"
+  grad_clip_norm: 1.0
+  log_every: 10
+  eval_every: 25
+  checkpoint_every: 100
+  output_dir: artifacts/algonauts_text_baseline_s1_s5_all4_tuned

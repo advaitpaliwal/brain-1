@@ -1,0 +1,26 @@
+seed: 1337
+
+data:
+  manifest_path: data/manifests/train.jsonl
+  synthetic_fallback_size: 16
+  synthetic_seq_len: 32
+
+optimization:
+  batch_size: 2
+  lr: 1.0e-4
+  weight_decay: 0.01
+  max_steps: 10000
+  warmup_steps: 500
+
+loss:
+  mse_weight: 1.0
+  correlation_weight: 0.1
+
+training:
+  device: cpu
+  mixed_precision: bf16
+  grad_clip_norm: 1.0
+  log_every: 20
+  eval_every: 200
+  checkpoint_every: 500
+  output_dir: artifacts/default_run
