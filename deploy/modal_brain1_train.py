@@ -45,9 +45,12 @@ def download_openneuro_dataset(
     materialize_prepared_betas: bool = False,
 ) -> dict[str, str]:
     import subprocess
+    import shutil
+    from pathlib import Path
 
     env = os.environ.copy()
     env["PYTHONPATH"] = f"{REMOTE_REPO}/src"
+    tmp_output = f"/tmp/openneuro-{dataset}"
     output = f"{REMOTE_DATA}/raw/openneuro/{dataset}"
 
     cmd = [
@@ -56,7 +59,7 @@ def download_openneuro_dataset(
         "--dataset",
         dataset,
         "--output",
-        output,
+        tmp_output,
     ]
     if subjects_csv:
         cmd.extend(["--subjects", subjects_csv])
@@ -78,8 +81,144 @@ def download_openneuro_dataset(
         cmd.append("--materialize-prepared-betas")
 
     subprocess.run(cmd, check=True, env=env)
+
+    src_root = Path(tmp_output)
+    dst_root = Path(output)
+    if dst_root.exists():
+        shutil.rmtree(dst_root)
+    dst_root.mkdir(parents=True, exist_ok=True)
+
+    for path in src_root.rglob("*"):
+        rel = path.relative_to(src_root)
+        if any(part in {".git", ".datalad"} for part in rel.parts):
+            continue
+        if path.is_dir():
+            (dst_root / rel).mkdir(parents=True, exist_ok=True)
+        elif path.is_file():
+            target = dst_root / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
+
     data_volume.commit()
     return {"dataset": dataset, "output": output}
+
+
+@app.function(
+    image=image,
+    timeout=60 * 60,
+    volumes={REMOTE_DATA: data_volume},
+)
+def build_lebel2023_text_manifest_remote(
+    subjects_csv: str,
+    stories_csv: str,
+    output_manifest: str = f"{REMOTE_DATA}/manifests/lebel2023_text_raw.jsonl",
+) -> dict[str, str]:
+    import subprocess
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{REMOTE_REPO}/src"
+    dataset_root = f"{REMOTE_DATA}/raw/openneuro/ds003020"
+    subprocess.run(
+        [
+            "python",
+            f"{REMOTE_REPO}/scripts/build_lebel2023_text_manifest.py",
+            "--dataset-root",
+            dataset_root,
+            "--subjects",
+            subjects_csv,
+            "--stories",
+            stories_csv,
+            "--output",
+            output_manifest,
+        ],
+        check=True,
+        env=env,
+    )
+    data_volume.commit()
+    return {"output_manifest": output_manifest}
+
+
+@app.function(
+    image=image,
+    gpu="A10G",
+    timeout=60 * 60 * 6,
+    volumes={REMOTE_DATA: data_volume},
+)
+def extract_text_features_remote(
+    raw_manifest: str,
+    output_manifest: str,
+    feature_root: str,
+    model_id: str = "Qwen/Qwen2.5-0.5B-Instruct",
+    batch_size: int = 32,
+    device: str = "cuda",
+    share_features_across_subjects: bool = True,
+) -> dict[str, str]:
+    import subprocess
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{REMOTE_REPO}/src"
+    cmd = [
+        "python",
+        f"{REMOTE_REPO}/scripts/extract_algonauts_text_features.py",
+        "--raw-manifest",
+        raw_manifest,
+        "--output-manifest",
+        output_manifest,
+        "--feature-root",
+        feature_root,
+        "--model-id",
+        model_id,
+        "--batch-size",
+        str(batch_size),
+        "--device",
+        device,
+    ]
+    if share_features_across_subjects:
+        cmd.append("--share-features-across-subjects")
+    subprocess.run(cmd, check=True, env=env)
+    data_volume.commit()
+    return {"output_manifest": output_manifest, "feature_root": feature_root}
+
+
+@app.function(
+    image=image,
+    timeout=60 * 60,
+    volumes={REMOTE_DATA: data_volume},
+)
+def build_bold_moments_text_manifest_remote(
+    subject: str,
+    split: str = "train",
+    hemi: str = "left",
+    limit: int = 0,
+    output_manifest: str = f"{REMOTE_DATA}/manifests/bold_moments_text_raw.jsonl",
+    target_root: str = f"{REMOTE_DATA}/processed/bold_moments_targets",
+) -> dict[str, str]:
+    import subprocess
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{REMOTE_REPO}/src"
+    dataset_root = f"{REMOTE_DATA}/raw/openneuro/ds005165"
+    cmd = [
+        "python",
+        f"{REMOTE_REPO}/scripts/build_bold_moments_text_manifest.py",
+        "--dataset-root",
+        dataset_root,
+        "--subject",
+        subject,
+        "--split",
+        split,
+        "--hemi",
+        hemi,
+        "--target-root",
+        target_root,
+        "--output",
+        output_manifest,
+    ]
+    if limit:
+        cmd.extend(["--limit", str(limit)])
+    subprocess.run(cmd, check=True, env=env)
+    data_volume.commit()
+    return {"output_manifest": output_manifest, "target_root": target_root}
 
 
 @app.function(

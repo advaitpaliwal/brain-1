@@ -268,6 +268,10 @@ artifacts/modal_algonauts_text_s1_s5_all4_tuned_b2_long/
 
 ## Adding more data: Lebel 2023 (OpenNeuro ds003020)
 
+For larger public datasets, prefer the Modal volume path over local disk. The
+helper entrypoint is in [deploy/modal_brain1_train.py](/Users/advaitpaliwal/Companion/Code/brain-1/deploy/modal_brain1_train.py)
+as `download_openneuro_dataset`.
+
 Install the OpenNeuro dataset checkout and materialize a small text slice:
 
 ```bash
@@ -324,6 +328,32 @@ PYTHONPATH=src python scripts/train_multidataset.py \
 
 For a real mixed-dataset run, point the training config at the concatenated mixed
 manifest above instead of the Algonauts-only manifest.
+
+## BOLD Moments text bootstrap
+
+The fastest way to start using BOLD Moments in the current stack is to turn the
+prepared beta files and middle-frame captions into a text-style manifest:
+
+```bash
+PYTHONPATH=src python scripts/build_bold_moments_text_manifest.py \
+  --dataset-root data/raw/openneuro/ds005165 \
+  --subject sub-01 \
+  --split train \
+  --hemi left \
+  --output data/manifests/bold_moments_text_raw.jsonl \
+  --target-root data/processed/bold_moments_targets
+```
+
+Then extract text features exactly the same way as the Algonauts and Lebel branches:
+
+```bash
+PYTHONPATH=src python scripts/extract_algonauts_text_features.py \
+  --raw-manifest data/manifests/bold_moments_text_raw.jsonl \
+  --output-manifest data/manifests/bold_moments_text_train.jsonl \
+  --feature-root data/processed/bold_moments_text \
+  --batch-size 64 \
+  --device cuda
+```
 
 ## Current best text-only run
 
