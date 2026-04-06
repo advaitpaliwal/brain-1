@@ -542,6 +542,77 @@ def run_text_benchmark_wide() -> dict[str, str]:
     }
 
 
+@app.function(
+    image=image,
+    gpu="A10G",
+    timeout=60 * 60 * 8,
+    volumes={REMOTE_DATA: data_volume},
+)
+def run_single_dataset_benchmark(
+    train_manifest: str,
+    output_dir: str,
+    val_manifest: str = "",
+    init_checkpoint: str = "",
+    model_config_path: str = f"{REMOTE_REPO}/configs/model.yaml",
+    eval_every: int = 25,
+    max_steps: int = 300,
+    lr: float = 1.0e-4,
+) -> dict[str, str]:
+    import subprocess
+    from pathlib import Path
+    import yaml
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{REMOTE_REPO}/src"
+    train_config_path = f"{REMOTE_REPO}/configs/single_dataset_modal.yaml"
+
+    config_payload = {
+        "seed": 1337,
+        "data": {
+            "manifest_path": train_manifest,
+            "val_manifest_path": val_manifest if val_manifest else None,
+            "synthetic_fallback_size": 0,
+            "synthetic_seq_len": 0,
+        },
+        "optimization": {
+            "batch_size": 2,
+            "lr": lr,
+            "weight_decay": 0.01,
+            "max_steps": max_steps,
+            "warmup_steps": 0,
+        },
+        "loss": {
+            "mse_weight": 1.0,
+            "correlation_weight": 0.0,
+        },
+        "training": {
+            "device": "cuda",
+            "mixed_precision": "no",
+            "grad_clip_norm": 1.0,
+            "log_every": 10,
+            "eval_every": eval_every if val_manifest else 0,
+            "checkpoint_every": 100,
+            "output_dir": output_dir,
+            "init_checkpoint_path": init_checkpoint if init_checkpoint else None,
+        },
+    }
+
+    Path(train_config_path).write_text(yaml.safe_dump(config_payload), encoding="utf-8")
+    subprocess.run(
+        [
+            "python",
+            f"{REMOTE_REPO}/scripts/train.py",
+            "--train-config",
+            train_config_path,
+            "--model-config",
+            model_config_path,
+        ],
+        check=True,
+        env=env,
+    )
+    return {"output_dir": output_dir, "train_manifest": train_manifest}
+
+
 @app.local_entrypoint()
 def main():
     result = run_text_benchmark.remote()
