@@ -67,6 +67,8 @@ def build_ds005165_paths(
     subjects: list[str],
     include_metadata: bool,
     include_prepared_betas: bool,
+    splits: list[str],
+    hemis: list[str],
 ) -> list[str]:
     paths: list[str] = []
     if include_metadata:
@@ -79,30 +81,13 @@ def build_ds005165_paths(
         )
     if include_prepared_betas:
         if subjects:
-            paths.extend(
-                [
-                    f"derivatives/versionB/fsaverage/GLM/{subject}/prepared_betas/{subject}_organized_betas_task-train_hemi-left_normalized.pkl"
-                    for subject in subjects
-                ]
-            )
-            paths.extend(
-                [
-                    f"derivatives/versionB/fsaverage/GLM/{subject}/prepared_betas/{subject}_organized_betas_task-train_hemi-right_normalized.pkl"
-                    for subject in subjects
-                ]
-            )
-            paths.extend(
-                [
-                    f"derivatives/versionB/fsaverage/GLM/{subject}/prepared_betas/{subject}_organized_betas_task-test_hemi-left_normalized.pkl"
-                    for subject in subjects
-                ]
-            )
-            paths.extend(
-                [
-                    f"derivatives/versionB/fsaverage/GLM/{subject}/prepared_betas/{subject}_organized_betas_task-test_hemi-right_normalized.pkl"
-                    for subject in subjects
-                ]
-            )
+            for subject in subjects:
+                for split in splits:
+                    for hemi in hemis:
+                        paths.append(
+                            f"derivatives/versionB/fsaverage/GLM/{subject}/prepared_betas/"
+                            f"{subject}_organized_betas_task-{split}_hemi-{hemi}_normalized.pkl"
+                        )
         else:
             paths.append("derivatives/versionB/fsaverage/GLM")
     return paths
@@ -147,11 +132,23 @@ def main() -> None:
         action="store_true",
         help="For ds005165, download versionB prepared beta files",
     )
+    parser.add_argument(
+        "--splits",
+        default="train,test",
+        help="For ds005165 prepared betas, comma-separated splits to fetch",
+    )
+    parser.add_argument(
+        "--hemis",
+        default="left,right",
+        help="For ds005165 prepared betas, comma-separated hemispheres to fetch",
+    )
     args = parser.parse_args()
 
     output = Path(args.output).expanduser().resolve()
     subjects = parse_csv(args.subjects)
     stories = parse_csv(args.stories)
+    splits = parse_csv(args.splits)
+    hemis = parse_csv(args.hemis)
 
     install_repo(args.dataset, output)
 
@@ -168,6 +165,8 @@ def main() -> None:
             subjects=subjects,
             include_metadata=args.materialize_metadata,
             include_prepared_betas=args.materialize_prepared_betas,
+            splits=splits,
+            hemis=hemis,
         )
     else:
         raise ValueError(f"Unsupported dataset: {args.dataset}")

@@ -16,7 +16,8 @@ data_volume = modal.Volume.from_name("brain-1-data", create_if_missing=True)
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
-    .apt_install("ffmpeg")
+    .apt_install("ffmpeg", "git", "git-annex")
+    .pip_install("datalad")
     .add_local_dir("/Users/advaitpaliwal/Companion/Code/brain-1/src", remote_path=f"{REMOTE_REPO}/src", copy=True)
     .add_local_dir("/Users/advaitpaliwal/Companion/Code/brain-1/scripts", remote_path=f"{REMOTE_REPO}/scripts", copy=True)
     .add_local_dir("/Users/advaitpaliwal/Companion/Code/brain-1/configs", remote_path=f"{REMOTE_REPO}/configs", copy=True)
@@ -24,6 +25,61 @@ image = (
     .add_local_file("/Users/advaitpaliwal/Companion/Code/brain-1/README.md", remote_path=f"{REMOTE_REPO}/README.md", copy=True)
     .run_commands(f"cd {REMOTE_REPO} && pip install -e .")
 )
+
+
+@app.function(
+    image=image,
+    timeout=60 * 60 * 6,
+    volumes={REMOTE_DATA: data_volume},
+)
+def download_openneuro_dataset(
+    dataset: str,
+    subjects_csv: str = "",
+    stories_csv: str = "",
+    splits_csv: str = "train,test",
+    hemis_csv: str = "left,right",
+    materialize_textgrids: bool = False,
+    materialize_stimuli: bool = False,
+    materialize_preprocessed_data: bool = False,
+    materialize_metadata: bool = False,
+    materialize_prepared_betas: bool = False,
+) -> dict[str, str]:
+    import subprocess
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{REMOTE_REPO}/src"
+    output = f"{REMOTE_DATA}/raw/openneuro/{dataset}"
+
+    cmd = [
+        "python",
+        f"{REMOTE_REPO}/scripts/download_openneuro.py",
+        "--dataset",
+        dataset,
+        "--output",
+        output,
+    ]
+    if subjects_csv:
+        cmd.extend(["--subjects", subjects_csv])
+    if stories_csv:
+        cmd.extend(["--stories", stories_csv])
+    if splits_csv:
+        cmd.extend(["--splits", splits_csv])
+    if hemis_csv:
+        cmd.extend(["--hemis", hemis_csv])
+    if materialize_textgrids:
+        cmd.append("--materialize-textgrids")
+    if materialize_stimuli:
+        cmd.append("--materialize-stimuli")
+    if materialize_preprocessed_data:
+        cmd.append("--materialize-preprocessed-data")
+    if materialize_metadata:
+        cmd.append("--materialize-metadata")
+    if materialize_prepared_betas:
+        cmd.append("--materialize-prepared-betas")
+
+    subprocess.run(cmd, check=True, env=env)
+    data_volume.commit()
+    return {"dataset": dataset, "output": output}
 
 
 @app.function(
