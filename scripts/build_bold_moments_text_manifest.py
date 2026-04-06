@@ -12,6 +12,8 @@ import torch
 def normalize_stimulus_id(raw_value: object) -> str:
     text = str(raw_value)
     text = Path(text).stem
+    if text.startswith("vid") and text[3:].isdigit():
+        text = text[3:]
     return text
 
 
