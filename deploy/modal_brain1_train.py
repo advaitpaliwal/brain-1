@@ -231,7 +231,7 @@ def build_bold_moments_text_manifest_remote(
     volumes={REMOTE_DATA: data_volume},
 )
 def concat_manifests_remote(
-    manifests: list[str],
+    manifests_csv: str,
     output_manifest: str,
     starting_index: int = 0,
 ) -> dict[str, str]:
@@ -239,6 +239,7 @@ def concat_manifests_remote(
 
     env = os.environ.copy()
     env["PYTHONPATH"] = f"{REMOTE_REPO}/src"
+    manifests = [value.strip() for value in manifests_csv.split(",") if value.strip()]
     cmd = [
         "python",
         f"{REMOTE_REPO}/scripts/concat_manifests.py",
