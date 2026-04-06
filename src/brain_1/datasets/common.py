@@ -128,7 +128,7 @@ def collate_temporal_batch(batch: list[dict[str, Any]]) -> dict[str, Any]:
     lengths = [int(item["length"]) for item in batch]
     max_len = max(lengths)
     feature_dim = batch[0]["features"].shape[-1]
-    target_dim = batch[0]["target"].shape[-1]
+    target_dim = max(int(item["target"].shape[-1]) for item in batch)
 
     features = torch.zeros(len(batch), max_len, feature_dim, dtype=torch.float32)
     target = torch.zeros(len(batch), max_len, target_dim, dtype=torch.float32)
@@ -137,10 +137,11 @@ def collate_temporal_batch(batch: list[dict[str, Any]]) -> dict[str, Any]:
 
     for row_index, item in enumerate(batch):
         length = int(item["length"])
+        item_target_dim = int(item["target"].shape[-1])
         features[row_index, :length] = item["features"]
-        target[row_index, :length] = item["target"]
+        target[row_index, :length, :item_target_dim] = item["target"]
         padding_mask[row_index, :length] = False
-        target_mask[row_index, :length] = 1.0
+        target_mask[row_index, :length, :item_target_dim] = 1.0
 
     return {
         "features": features,
@@ -148,6 +149,7 @@ def collate_temporal_batch(batch: list[dict[str, Any]]) -> dict[str, Any]:
         "padding_mask": padding_mask,
         "target_mask": target_mask,
         "subject_index": torch.stack([item["subject_index"] for item in batch]),
+        "dataset_name": [item["dataset_name"] for item in batch],
         "metadata": [
             {
                 "dataset_name": item["dataset_name"],

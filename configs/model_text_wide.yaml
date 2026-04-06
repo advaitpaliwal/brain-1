@@ -1,0 +1,24 @@
+backbone:
+  name: qwen2_5_omni_7b
+  pretrained_id: Qwen/Qwen2.5-Omni-7B
+  freeze_backbone: true
+  input_feature_dim: 4096
+  hidden_size: 4096
+
+projection:
+  hidden_size: 1536
+  dropout: 0.1
+
+temporal_adapter:
+  type: transformer
+  layers: 6
+  heads: 12
+  dropout: 0.1
+
+hrf:
+  kernel_size: 5
+  learnable: true
+
+head:
+  output_dim: 1000
+  subject_embedding_dim: 128

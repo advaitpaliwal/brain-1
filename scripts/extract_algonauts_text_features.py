@@ -141,9 +141,12 @@ def main() -> None:
             print(f"skipped stimulus={row['stimulus_id']} outputs already exist")
             continue
 
-        transcript_path = Path(row["transcript_path"])
-        df = pd.read_csv(transcript_path, sep="\t")
-        texts = df["text_per_tr"].fillna("").astype(str).tolist()
+        if "texts" in row:
+            texts = [str(text) for text in row["texts"]]
+        else:
+            transcript_path = Path(row["transcript_path"])
+            df = pd.read_csv(transcript_path, sep="\t")
+            texts = df["text_per_tr"].fillna("").astype(str).tolist()
 
         uncached = [text for text in texts if text not in text_cache]
         if uncached:
@@ -160,8 +163,11 @@ def main() -> None:
 
         features = torch.stack([text_cache[text] for text in texts]).float()
 
-        with h5py.File(row["target_h5_path"], "r") as target_handle:
-            target = torch.tensor(target_handle[row["target_h5_key"]][:], dtype=torch.float32)
+        if "target_path" in row:
+            target = torch.load(Path(row["target_path"]), map_location="cpu")["target"].float()
+        else:
+            with h5py.File(row["target_h5_path"], "r") as target_handle:
+                target = torch.tensor(target_handle[row["target_h5_key"]][:], dtype=torch.float32)
 
         length = min(features.shape[0], target.shape[0])
         features = features[:length]

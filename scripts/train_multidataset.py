@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 import json
 import tempfile
@@ -10,12 +11,8 @@ import yaml
 from torch import nn
 from torch.utils.data import DataLoader
 
-from brain_1.datasets.common import (
-    SyntheticTemporalDataset,
-    TemporalFeatureDataset,
-    collate_temporal_batch,
-)
-from brain_1.models import BrainModel, BrainModelConfig
+from brain_1.datasets.common import TemporalFeatureDataset, collate_temporal_batch
+from brain_1.models import MultiDatasetBrainModel, MultiDatasetBrainModelConfig
 from brain_1.training.losses import combined_regression_loss, masked_mse
 from brain_1.training.metrics import regression_metrics
 
@@ -24,6 +21,27 @@ from brain_1.training.metrics import regression_metrics
 class TrainingConfig:
     train_config_path: Path = Path("configs/train.yaml")
     model_config_path: Path = Path("configs/model.yaml")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Train a mixed-dataset brain-1 model with dataset-specific heads.")
+    parser.add_argument(
+        "--train-config",
+        default="configs/train.yaml",
+        help="Path to training config YAML",
+    )
+    parser.add_argument(
+        "--model-config",
+        default="configs/model.yaml",
+        help="Path to model config YAML",
+    )
+    args = parser.parse_args()
+    run_training(
+        TrainingConfig(
+            train_config_path=Path(args.train_config),
+            model_config_path=Path(args.model_config),
+        )
+    )
 
 
 def run_training(config: TrainingConfig) -> None:
@@ -43,13 +61,8 @@ def run_training(config: TrainingConfig) -> None:
     hrf = model_config["hrf"]
     device = torch.device(training_cfg.get("device", "cpu"))
 
-    dataset = _build_dataset(
-        manifest_path=Path(data_config["manifest_path"]),
-        synthetic_fallback_size=int(data_config["synthetic_fallback_size"]),
-        synthetic_seq_len=int(data_config["synthetic_seq_len"]),
-        feature_dim=int(backbone["input_feature_dim"]),
-        parcel_dim=int(head["output_dim"]),
-    )
+    manifest_path = Path(data_config["manifest_path"])
+    dataset = TemporalFeatureDataset(manifest_path)
     raw_val_manifest = data_config.get("val_manifest_path")
     val_manifest_path = Path(raw_val_manifest) if raw_val_manifest else None
     val_dataset = (
@@ -57,11 +70,9 @@ def run_training(config: TrainingConfig) -> None:
         if val_manifest_path is not None and val_manifest_path.is_file()
         else None
     )
-    inferred_feature_dim, inferred_parcel_dim = _infer_dimensions(
-        dataset,
-        default_feature_dim=int(backbone["input_feature_dim"]),
-        default_parcel_dim=int(head["output_dim"]),
-    )
+
+    inferred_feature_dim = dataset[0]["features"].shape[-1]
+    dataset_output_dims = _infer_dataset_output_dims(dataset, val_dataset)
     dataloader = DataLoader(
         dataset,
         batch_size=int(optimization["batch_size"]),
@@ -79,15 +90,15 @@ def run_training(config: TrainingConfig) -> None:
         else None
     )
 
-    model = BrainModel(
-        BrainModelConfig(
+    model = MultiDatasetBrainModel(
+        MultiDatasetBrainModelConfig(
             input_feature_dim=inferred_feature_dim,
             hidden_size=int(model_config["projection"]["hidden_size"]),
             adapter_layers=int(temporal_adapter["layers"]),
             adapter_heads=int(temporal_adapter["heads"]),
             adapter_dropout=float(temporal_adapter["dropout"]),
-            parcel_dim=inferred_parcel_dim,
-            subject_count=max(32, _infer_subject_count(dataset)),
+            dataset_output_dims=dataset_output_dims,
+            subject_count=max(32, _infer_subject_count(dataset, val_dataset)),
             subject_embedding_dim=int(head["subject_embedding_dim"]),
             hrf_kernel_size=int(hrf["kernel_size"]),
         )
@@ -106,21 +117,19 @@ def run_training(config: TrainingConfig) -> None:
     model.train()
     best_val_pearson = float("-inf")
     history: list[dict[str, float | int]] = []
-    output_dir = Path(training_cfg.get("output_dir", "artifacts/default_run"))
+    output_dir = Path(training_cfg.get("output_dir", "artifacts/default_mixed_run"))
     output_dir.mkdir(parents=True, exist_ok=True)
 
     while step < max_steps:
         for batch in dataloader:
-            features = batch["features"].to(device)
-            subject_index = batch["subject_index"].to(device)
-            padding_mask = batch["padding_mask"].to(device)
+            pred = model(
+                features=batch["features"].to(device),
+                subject_index=batch["subject_index"].to(device),
+                dataset_names=batch["dataset_name"],
+                padding_mask=batch["padding_mask"].to(device),
+            )
             target = batch["target"].to(device)
             target_mask = batch["target_mask"].to(device)
-            pred = model(
-                features=features,
-                subject_index=subject_index,
-                padding_mask=padding_mask,
-            )
             loss, loss_parts = combined_regression_loss(
                 pred,
                 target,
@@ -131,12 +140,15 @@ def run_training(config: TrainingConfig) -> None:
 
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
-            grad_clip_norm = float(training_cfg["grad_clip_norm"])
-            nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
+            nn.utils.clip_grad_norm_(model.parameters(), float(training_cfg["grad_clip_norm"]))
             optimizer.step()
 
             if step % log_every == 0 or step == max_steps - 1:
-                metrics = regression_metrics(pred.detach().cpu(), target.detach().cpu())
+                metrics = regression_metrics(
+                    pred.detach().cpu(),
+                    target.detach().cpu(),
+                    mask=target_mask.detach().cpu().bool(),
+                )
                 print(
                     f"step={step:05d} loss={loss.item():.4f} "
                     f"mse={metrics['mse']:.4f} pearson={metrics['pearson']:.4f} "
@@ -177,6 +189,7 @@ def run_training(config: TrainingConfig) -> None:
                             "model_state_dict": _cpu_state_dict(model),
                             "train_config": train_config,
                             "model_config": model_config,
+                            "dataset_output_dims": dataset_output_dims,
                             "best_val_metrics": val_metrics,
                             "best_step": step,
                         },
@@ -194,6 +207,7 @@ def run_training(config: TrainingConfig) -> None:
             "model_state_dict": _cpu_state_dict(model),
             "train_config": train_config,
             "model_config": model_config,
+            "dataset_output_dims": dataset_output_dims,
         },
         checkpoint_path,
     )
@@ -201,7 +215,6 @@ def run_training(config: TrainingConfig) -> None:
     history_path.write_text(json.dumps(history, indent=2), encoding="utf-8")
     print(f"Saved history to {history_path}")
     print(f"Saved checkpoint to {checkpoint_path}")
-    print("Training run finished.")
 
 
 def _load_yaml(path: Path) -> dict:
@@ -209,47 +222,33 @@ def _load_yaml(path: Path) -> dict:
         return yaml.safe_load(handle)
 
 
-def _build_dataset(
-    manifest_path: Path,
-    synthetic_fallback_size: int,
-    synthetic_seq_len: int,
-    feature_dim: int,
-    parcel_dim: int,
-):
-    if manifest_path.exists():
-        print(f"Using manifest dataset: {manifest_path}")
-        return TemporalFeatureDataset(manifest_path)
-
-    print(f"Manifest not found at {manifest_path}, using synthetic fallback dataset.")
-    return SyntheticTemporalDataset(
-        size=synthetic_fallback_size,
-        seq_len=synthetic_seq_len,
-        feature_dim=feature_dim,
-        parcel_dim=parcel_dim,
-    )
+def _infer_dataset_output_dims(*datasets: TemporalFeatureDataset | None) -> dict[str, int]:
+    output_dims: dict[str, int] = {}
+    for dataset in datasets:
+        if dataset is None:
+            continue
+        for record in dataset.records:
+            if record.dataset_name in output_dims:
+                continue
+            target = torch.load(record.target_path, map_location="cpu")["target"]
+            output_dims[record.dataset_name] = int(target.shape[-1])
+    return output_dims
 
 
-def _infer_subject_count(dataset) -> int:
-    if hasattr(dataset, "records"):
-        indices = [int(record.subject_index) for record in dataset.records]
-        return (max(indices) + 1) if indices else 32
-    if hasattr(dataset, "size"):
-        return 4
-    return 32
-
-
-def _infer_dimensions(dataset, default_feature_dim: int, default_parcel_dim: int) -> tuple[int, int]:
-    try:
-        sample = dataset[0]
-    except Exception:
-        return default_feature_dim, default_parcel_dim
-    return sample["features"].shape[-1], sample["target"].shape[-1]
+def _infer_subject_count(*datasets: TemporalFeatureDataset | None) -> int:
+    subject_indices: list[int] = []
+    for dataset in datasets:
+        if dataset is None:
+            continue
+        subject_indices.extend(int(record.subject_index) for record in dataset.records)
+    return (max(subject_indices) + 1) if subject_indices else 32
 
 
 def _evaluate_model(model, dataloader, device: torch.device) -> dict[str, float]:
     model.eval()
     preds: list[torch.Tensor] = []
     targets: list[torch.Tensor] = []
+    masks: list[torch.Tensor] = []
     total_loss = 0.0
     total_batches = 0
 
@@ -258,6 +257,7 @@ def _evaluate_model(model, dataloader, device: torch.device) -> dict[str, float]
             pred = model(
                 features=batch["features"].to(device),
                 subject_index=batch["subject_index"].to(device),
+                dataset_names=batch["dataset_name"],
                 padding_mask=batch["padding_mask"].to(device),
             )
             target = batch["target"].to(device)
@@ -265,16 +265,14 @@ def _evaluate_model(model, dataloader, device: torch.device) -> dict[str, float]
             loss = masked_mse(pred, target, mask=target_mask)
             total_loss += float(loss.item())
             total_batches += 1
-
-            mask = target_mask.detach().cpu().bool()
-            pred_cpu = pred.detach().cpu()
-            target_cpu = target.detach().cpu()
-            preds.append(pred_cpu[mask])
-            targets.append(target_cpu[mask])
+            preds.append(pred.detach().cpu())
+            targets.append(target.detach().cpu())
+            masks.append(target_mask.detach().cpu())
 
     pred_tensor = torch.cat(preds, dim=0)
     target_tensor = torch.cat(targets, dim=0)
-    metrics = regression_metrics(pred_tensor, target_tensor)
+    mask = torch.cat(masks, dim=0).bool()
+    metrics = regression_metrics(pred_tensor, target_tensor, mask=mask)
     metrics["loss"] = total_loss / max(total_batches, 1)
     model.train()
     return metrics
@@ -294,3 +292,7 @@ def _save_checkpoint(payload: dict, path: Path) -> None:
     finally:
         if tmp_path.exists():
             tmp_path.unlink(missing_ok=True)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,11 +1,11 @@
 # brain-1
 
-`brain-1` is a clean-room commercial brain-encoding scaffold inspired by TRIBE-like multimodal fMRI prediction, but implemented as a fresh project.
+`brain-1` is a multimodal brain-encoding benchmark inspired by recent foundation-model approaches to fMRI prediction.
 
 ## V1 scope
 
 - Predict `1,000` Schaefer parcels first, not dense cortical vertices.
-- Use one commercial-friendly multimodal backbone as the feature extractor.
+- Use one multimodal backbone as the feature extractor.
 - Align text, audio, and video on a shared temporal grid.
 - Train a small HRF-aware brain head before touching the backbone heavily.
 
@@ -253,28 +253,104 @@ Current season-6 held-out validation metrics:
 
 ```json
 {
-  "mse": 0.36853334307670593,
-  "pearson": 0.09849394112825394,
-  "loss": 0.36857557684183123,
+  "mse": 0.3667716085910797,
+  "pearson": 0.11924204230308533,
+  "loss": 0.3668120473623276,
   "num_rows": 199
 }
 ```
+
+This best result currently comes from the longer Modal text run in:
+
+```text
+artifacts/modal_algonauts_text_s1_s5_all4_tuned_b2_long/
+```
+
+## Adding more data: Lebel 2023 (OpenNeuro ds003020)
+
+Install the OpenNeuro dataset checkout and materialize a small text slice:
+
+```bash
+PYTHONPATH=src python scripts/download_openneuro.py \
+  --dataset ds003020 \
+  --output data/raw/ds003020 \
+  --subjects UTS01 \
+  --stories sweetaspie,wheretheressmoke \
+  --materialize-textgrids \
+  --materialize-stimuli \
+  --materialize-preprocessed-data
+```
+
+Build a TR-aligned raw text manifest:
+
+```bash
+PYTHONPATH=src python scripts/build_lebel2023_text_manifest.py \
+  --dataset-root data/raw/ds003020 \
+  --subjects UTS01 \
+  --stories sweetaspie,wheretheressmoke \
+  --output data/manifests/lebel2023_text_raw.jsonl
+```
+
+Extract features with the same text encoder used for the Algonauts branch:
+
+```bash
+PYTHONPATH=src python scripts/extract_algonauts_text_features.py \
+  --raw-manifest data/manifests/lebel2023_text_raw.jsonl \
+  --output-manifest data/manifests/lebel2023_text_train.jsonl \
+  --feature-root data/processed/lebel2023_text \
+  --batch-size 64 \
+  --device mps \
+  --share-features-across-subjects
+```
+
+Concatenate processed manifests across datasets and remap subject indices so the shared
+subject embedding table remains well-defined:
+
+```bash
+python scripts/concat_manifests.py \
+  --manifests \
+    data/manifests/algonauts2025_text_train_s1_s5_all4.jsonl \
+    data/manifests/lebel2023_text_train.jsonl \
+  --output data/manifests/text_train_mixed.jsonl
+```
+
+Train a shared trunk with dataset-specific output heads:
+
+```bash
+PYTHONPATH=src python scripts/train_multidataset.py \
+  --train-config configs/algonauts_text_train_s1_s5_all4.yaml \
+  --model-config configs/model.yaml
+```
+
+For a real mixed-dataset run, point the training config at the concatenated mixed
+manifest above instead of the Algonauts-only manifest.
 
 ## Current best text-only run
 
 The current best held-out text-only checkpoint is:
 
 ```text
-artifacts/algonauts_text_baseline_s1_s5_all4_tuned_b2/best.pt
+artifacts/modal_algonauts_text_s1_s5_all4_tuned_b2_long/best.pt
 ```
 
 Its season-6 held-out validation metrics are:
 
 ```json
 {
-  "mse": 0.3683369755744934,
-  "pearson": 0.10527008771896362,
-  "loss": 0.36837509214878084,
+  "mse": 0.3667716085910797,
+  "pearson": 0.11924204230308533,
+  "loss": 0.3668120473623276,
+  "num_rows": 199
+}
+```
+
+The larger `Qwen2.5-3B-Instruct` text rerun did not beat this score:
+
+```json
+{
+  "mse": 0.36769604682922363,
+  "pearson": 0.10748477280139923,
+  "loss": 0.3677347505092621,
   "num_rows": 199
 }
 ```
