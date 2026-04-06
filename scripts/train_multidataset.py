@@ -248,7 +248,6 @@ def _evaluate_model(model, dataloader, device: torch.device) -> dict[str, float]
     model.eval()
     preds: list[torch.Tensor] = []
     targets: list[torch.Tensor] = []
-    masks: list[torch.Tensor] = []
     total_loss = 0.0
     total_batches = 0
 
@@ -265,14 +264,15 @@ def _evaluate_model(model, dataloader, device: torch.device) -> dict[str, float]
             loss = masked_mse(pred, target, mask=target_mask)
             total_loss += float(loss.item())
             total_batches += 1
-            preds.append(pred.detach().cpu())
-            targets.append(target.detach().cpu())
-            masks.append(target_mask.detach().cpu())
+            mask = target_mask.detach().cpu().bool()
+            pred_cpu = pred.detach().cpu()
+            target_cpu = target.detach().cpu()
+            preds.append(pred_cpu[mask])
+            targets.append(target_cpu[mask])
 
     pred_tensor = torch.cat(preds, dim=0)
     target_tensor = torch.cat(targets, dim=0)
-    mask = torch.cat(masks, dim=0).bool()
-    metrics = regression_metrics(pred_tensor, target_tensor, mask=mask)
+    metrics = regression_metrics(pred_tensor, target_tensor)
     metrics["loss"] = total_loss / max(total_batches, 1)
     model.train()
     return metrics
