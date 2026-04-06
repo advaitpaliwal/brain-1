@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
+from urllib.request import urlopen
 from pathlib import Path
 
 
@@ -12,6 +14,16 @@ def parse_csv(value: str) -> list[str]:
 
 def run(cmd: list[str], cwd: Path | None = None) -> None:
     subprocess.run(cmd, cwd=str(cwd) if cwd is not None else None, check=True)
+
+
+def download_http(url: str, output: Path) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if output.exists():
+        print(f"Using existing file: {output}")
+        return
+    print(f"Downloading {url} -> {output}")
+    with urlopen(url) as response, output.open("wb") as handle:
+        shutil.copyfileobj(response, handle, length=1024 * 1024)
 
 
 def install_repo_datalad(dataset: str, output: Path) -> None:
@@ -116,6 +128,24 @@ def build_ds005165_paths(
     return paths
 
 
+def maybe_download_direct(dataset: str, output: Path, paths: list[str]) -> bool:
+    if dataset != "ds005165":
+        return False
+    prepared_beta_prefix = "derivatives/versionB/fsaverage/GLM/"
+    prepared_beta_paths = [
+        rel_path
+        for rel_path in paths
+        if rel_path.startswith(prepared_beta_prefix)
+        and rel_path.endswith("_normalized.pkl")
+    ]
+    if not prepared_beta_paths:
+        return False
+    for rel_path in prepared_beta_paths:
+        url = f"https://s3.amazonaws.com/openneuro.org/{dataset}/{rel_path}"
+        download_http(url, output / rel_path)
+    return len(prepared_beta_paths) == len(paths)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Install and selectively materialize OpenNeuro datasets.")
     parser.add_argument("--dataset", required=True, help="OpenNeuro dataset id, e.g. ds003020")
@@ -203,6 +233,10 @@ def main() -> None:
     if not paths:
         print(f"Installed {args.dataset} at {output}")
         print("No materialization flags were set, so only the dataset checkout was created.")
+        return
+
+    if maybe_download_direct(args.dataset, output, paths):
+        print(f"Finished downloading requested data for {args.dataset} into {output}")
         return
 
     print(f"Materializing {len(paths)} path(s) in {output}")
