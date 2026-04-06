@@ -62,6 +62,8 @@ def download_openneuro_dataset(
         dataset,
         "--output",
         tmp_output,
+        "--backend",
+        "git-annex",
     ]
     if subjects_csv:
         cmd.extend(["--subjects", subjects_csv])

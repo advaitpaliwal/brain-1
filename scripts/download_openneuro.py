@@ -14,7 +14,7 @@ def run(cmd: list[str], cwd: Path | None = None) -> None:
     subprocess.run(cmd, cwd=str(cwd) if cwd is not None else None, check=True)
 
 
-def install_repo(dataset: str, output: Path) -> None:
+def install_repo_datalad(dataset: str, output: Path) -> None:
     if (output / ".git").exists():
         print(f"Using existing dataset checkout at {output}")
         return
@@ -31,6 +31,29 @@ def install_repo(dataset: str, output: Path) -> None:
             ),
         ]
     )
+
+
+def install_repo_git_annex(dataset: str, output: Path) -> None:
+    if (output / ".git").exists():
+        print(f"Using existing dataset checkout at {output}")
+        return
+    output.parent.mkdir(parents=True, exist_ok=True)
+    source = f"https://github.com/OpenNeuroDatasets/{dataset}.git"
+    print(f"Cloning {dataset} from {source} into {output}")
+    run(["git", "clone", source, str(output)])
+    run(["git", "config", "user.email", "brain1@local.invalid"], cwd=output)
+    run(["git", "config", "user.name", "brain-1"], cwd=output)
+    run(["git", "annex", "init", "brain-1"], cwd=output)
+
+
+def install_repo(dataset: str, output: Path, backend: str) -> None:
+    if backend == "datalad":
+        install_repo_datalad(dataset, output)
+        return
+    if backend == "git-annex":
+        install_repo_git_annex(dataset, output)
+        return
+    raise ValueError(f"Unsupported backend: {backend}")
 
 
 def build_ds003020_paths(
@@ -133,6 +156,12 @@ def main() -> None:
         help="For ds005165, download versionB prepared beta files",
     )
     parser.add_argument(
+        "--backend",
+        default="datalad",
+        choices=["datalad", "git-annex"],
+        help="Repository setup backend to use before git-annex get",
+    )
+    parser.add_argument(
         "--splits",
         default="train,test",
         help="For ds005165 prepared betas, comma-separated splits to fetch",
@@ -150,7 +179,7 @@ def main() -> None:
     splits = parse_csv(args.splits)
     hemis = parse_csv(args.hemis)
 
-    install_repo(args.dataset, output)
+    install_repo(args.dataset, output, backend=args.backend)
 
     if args.dataset == "ds003020":
         paths = build_ds003020_paths(
