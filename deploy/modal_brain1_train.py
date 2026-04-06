@@ -227,6 +227,35 @@ def build_bold_moments_text_manifest_remote(
 
 @app.function(
     image=image,
+    timeout=60 * 30,
+    volumes={REMOTE_DATA: data_volume},
+)
+def concat_manifests_remote(
+    manifests: list[str],
+    output_manifest: str,
+    starting_index: int = 0,
+) -> dict[str, str]:
+    import subprocess
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{REMOTE_REPO}/src"
+    cmd = [
+        "python",
+        f"{REMOTE_REPO}/scripts/concat_manifests.py",
+        "--output",
+        output_manifest,
+        "--starting-index",
+        str(starting_index),
+        "--manifests",
+        *manifests,
+    ]
+    subprocess.run(cmd, check=True, env=env)
+    data_volume.commit()
+    return {"output_manifest": output_manifest}
+
+
+@app.function(
+    image=image,
     gpu="A10G",
     timeout=60 * 60 * 8,
     volumes={REMOTE_DATA: data_volume},
