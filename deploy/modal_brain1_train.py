@@ -23,6 +23,8 @@ image = (
     .add_local_dir("/Users/advaitpaliwal/Companion/Code/brain-1/configs", remote_path=f"{REMOTE_REPO}/configs", copy=True)
     .add_local_file("/Users/advaitpaliwal/Companion/Code/brain-1/pyproject.toml", remote_path=f"{REMOTE_REPO}/pyproject.toml", copy=True)
     .add_local_file("/Users/advaitpaliwal/Companion/Code/brain-1/README.md", remote_path=f"{REMOTE_REPO}/README.md", copy=True)
+    .run_commands('git config --global user.email "brain1@modal.local"')
+    .run_commands('git config --global user.name "brain-1 modal"')
     .run_commands(f"cd {REMOTE_REPO} && pip install -e .")
 )
 
