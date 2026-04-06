@@ -266,6 +266,8 @@ def run_multidataset_text_benchmark(
     output_dir: str,
     val_manifest: str = "",
     model_config_path: str = f"{REMOTE_REPO}/configs/model.yaml",
+    eval_every: int = 25,
+    max_steps: int = 300,
 ) -> dict[str, str]:
     import subprocess
     from pathlib import Path
@@ -287,7 +289,7 @@ def run_multidataset_text_benchmark(
             "batch_size": 2,
             "lr": 1.0e-4,
             "weight_decay": 0.01,
-            "max_steps": 300,
+            "max_steps": max_steps,
             "warmup_steps": 0,
         },
         "loss": {
@@ -299,7 +301,7 @@ def run_multidataset_text_benchmark(
             "mixed_precision": "no",
             "grad_clip_norm": 1.0,
             "log_every": 10,
-            "eval_every": 0,
+            "eval_every": eval_every if val_manifest else 0,
             "checkpoint_every": 100,
             "output_dir": output_dir,
         },
