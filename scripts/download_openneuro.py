@@ -70,12 +70,36 @@ def build_ds005165_paths(
 ) -> list[str]:
     paths: list[str] = []
     if include_metadata:
-        paths.append("derivatives/stimuli_metadata")
+        paths.extend(
+            [
+                "derivatives/stimuli_metadata/llm_frame_annotations.json",
+                "derivatives/stimuli_metadata/annotations_fieldnames.json",
+                "derivatives/stimuli_metadata/README.txt",
+            ]
+        )
     if include_prepared_betas:
         if subjects:
             paths.extend(
                 [
-                    f"derivatives/versionB/fsaverage/GLM/{subject}/prepared_betas"
+                    f"derivatives/versionB/fsaverage/GLM/{subject}/prepared_betas/{subject}_organized_betas_task-train_hemi-left_normalized.pkl"
+                    for subject in subjects
+                ]
+            )
+            paths.extend(
+                [
+                    f"derivatives/versionB/fsaverage/GLM/{subject}/prepared_betas/{subject}_organized_betas_task-train_hemi-right_normalized.pkl"
+                    for subject in subjects
+                ]
+            )
+            paths.extend(
+                [
+                    f"derivatives/versionB/fsaverage/GLM/{subject}/prepared_betas/{subject}_organized_betas_task-test_hemi-left_normalized.pkl"
+                    for subject in subjects
+                ]
+            )
+            paths.extend(
+                [
+                    f"derivatives/versionB/fsaverage/GLM/{subject}/prepared_betas/{subject}_organized_betas_task-test_hemi-right_normalized.pkl"
                     for subject in subjects
                 ]
             )
