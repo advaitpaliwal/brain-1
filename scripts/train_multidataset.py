@@ -103,6 +103,14 @@ def run_training(config: TrainingConfig) -> None:
             hrf_kernel_size=int(hrf["kernel_size"]),
         )
     )
+    init_checkpoint_path = training_cfg.get("init_checkpoint_path")
+    if init_checkpoint_path:
+        checkpoint = torch.load(Path(init_checkpoint_path), map_location="cpu")
+        loaded = _load_compatible_state_dict(model, checkpoint["model_state_dict"])
+        print(
+            f"Loaded {loaded['loaded']} tensors from init checkpoint "
+            f"{init_checkpoint_path} (skipped {loaded['skipped']})"
+        )
     model.to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -292,6 +300,26 @@ def _save_checkpoint(payload: dict, path: Path) -> None:
     finally:
         if tmp_path.exists():
             tmp_path.unlink(missing_ok=True)
+
+
+def _load_compatible_state_dict(model: nn.Module, state_dict: dict[str, torch.Tensor]) -> dict[str, int]:
+    model_state = model.state_dict()
+    filtered: dict[str, torch.Tensor] = {}
+    skipped = 0
+    for key, value in state_dict.items():
+        if key not in model_state:
+            skipped += 1
+            continue
+        if tuple(model_state[key].shape) != tuple(value.shape):
+            skipped += 1
+            continue
+        filtered[key] = value
+    missing, unexpected = model.load_state_dict(filtered, strict=False)
+    skipped += len(unexpected)
+    return {
+        "loaded": len(filtered),
+        "skipped": skipped + len(missing),
+    }
 
 
 if __name__ == "__main__":

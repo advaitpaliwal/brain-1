@@ -268,6 +268,7 @@ def run_multidataset_text_benchmark(
     model_config_path: str = f"{REMOTE_REPO}/configs/model.yaml",
     eval_every: int = 25,
     max_steps: int = 300,
+    init_checkpoint: str = "",
 ) -> dict[str, str]:
     import subprocess
     from pathlib import Path
@@ -304,6 +305,7 @@ def run_multidataset_text_benchmark(
             "eval_every": eval_every if val_manifest else 0,
             "checkpoint_every": 100,
             "output_dir": output_dir,
+            "init_checkpoint_path": init_checkpoint if init_checkpoint else None,
         },
     }
 
