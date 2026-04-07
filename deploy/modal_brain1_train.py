@@ -109,6 +109,61 @@ def download_openneuro_dataset(
 
 @app.function(
     image=image,
+    timeout=60 * 60 * 8,
+    volumes={REMOTE_DATA: data_volume},
+)
+def download_git_annex_repo(
+    repo_url: str,
+    output_subdir: str,
+    paths_csv: str = "",
+) -> dict[str, str]:
+    import subprocess
+    import shutil
+    from pathlib import Path
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{REMOTE_REPO}/src"
+    tmp_output = f"/tmp/{Path(output_subdir).name}"
+    final_output = f"{REMOTE_DATA}/{output_subdir.strip('/')}"
+
+    subprocess.run(
+        [
+            "python",
+            f"{REMOTE_REPO}/scripts/download_git_annex_repo.py",
+            "--repo-url",
+            repo_url,
+            "--output",
+            tmp_output,
+            "--paths",
+            paths_csv,
+        ],
+        check=True,
+        env=env,
+    )
+
+    src_root = Path(tmp_output)
+    dst_root = Path(final_output)
+    if dst_root.exists():
+        shutil.rmtree(dst_root)
+    dst_root.mkdir(parents=True, exist_ok=True)
+
+    for path in src_root.rglob("*"):
+        rel = path.relative_to(src_root)
+        if any(part in {".git", ".datalad"} for part in rel.parts):
+            continue
+        if path.is_dir():
+            (dst_root / rel).mkdir(parents=True, exist_ok=True)
+        elif path.is_file():
+            target = dst_root / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
+
+    data_volume.commit()
+    return {"output": final_output}
+
+
+@app.function(
+    image=image,
     timeout=60 * 60,
     volumes={REMOTE_DATA: data_volume},
 )
