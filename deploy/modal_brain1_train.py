@@ -13,6 +13,7 @@ REMOTE_DATA = "/mnt/brain1-data"
 app = modal.App(APP_NAME)
 
 data_volume = modal.Volume.from_name("brain-1-data", create_if_missing=True)
+hf_secret = modal.Secret.from_name("huggingface")
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -33,6 +34,7 @@ image = (
     image=image,
     timeout=60 * 60 * 6,
     volumes={REMOTE_DATA: data_volume},
+    secrets=[hf_secret],
 )
 def download_openneuro_dataset(
     dataset: str,
@@ -111,6 +113,7 @@ def download_openneuro_dataset(
     image=image,
     timeout=60 * 60 * 8,
     volumes={REMOTE_DATA: data_volume},
+    secrets=[hf_secret],
 )
 def download_git_annex_repo(
     repo_url: str,
@@ -166,6 +169,7 @@ def download_git_annex_repo(
     image=image,
     timeout=60 * 60,
     volumes={REMOTE_DATA: data_volume},
+    secrets=[hf_secret],
 )
 def build_lebel2023_text_manifest_remote(
     subjects_csv: str,
@@ -202,6 +206,7 @@ def build_lebel2023_text_manifest_remote(
     gpu="A10G",
     timeout=60 * 60 * 6,
     volumes={REMOTE_DATA: data_volume},
+    secrets=[hf_secret],
 )
 def extract_text_features_remote(
     raw_manifest: str,
@@ -243,6 +248,7 @@ def extract_text_features_remote(
     image=image,
     timeout=60 * 60,
     volumes={REMOTE_DATA: data_volume},
+    secrets=[hf_secret],
 )
 def build_bold_moments_text_manifest_remote(
     subject: str,
@@ -284,6 +290,7 @@ def build_bold_moments_text_manifest_remote(
     image=image,
     timeout=60 * 30,
     volumes={REMOTE_DATA: data_volume},
+    secrets=[hf_secret],
 )
 def concat_manifests_remote(
     manifests_csv: str,
@@ -315,6 +322,7 @@ def concat_manifests_remote(
     gpu="A10G",
     timeout=60 * 60 * 8,
     volumes={REMOTE_DATA: data_volume},
+    secrets=[hf_secret],
 )
 def run_multidataset_text_benchmark(
     train_manifest: str,
@@ -393,6 +401,7 @@ def run_multidataset_text_benchmark(
     gpu="A10G",
     timeout=60 * 60 * 6,
     volumes={REMOTE_DATA: data_volume},
+    secrets=[hf_secret],
 )
 def run_text_benchmark() -> dict[str, str]:
     import subprocess
@@ -445,6 +454,7 @@ def run_text_benchmark() -> dict[str, str]:
     gpu="A10G",
     timeout=60 * 60 * 8,
     volumes={REMOTE_DATA: data_volume},
+    secrets=[hf_secret],
 )
 def run_qwen25_3b_text_extraction() -> dict[str, str]:
     import subprocess
@@ -487,6 +497,7 @@ def run_qwen25_3b_text_extraction() -> dict[str, str]:
     gpu="A10G",
     timeout=60 * 60 * 8,
     volumes={REMOTE_DATA: data_volume},
+    secrets=[hf_secret],
 )
 def run_qwen25_3b_text_benchmark() -> dict[str, str]:
     import subprocess
@@ -548,6 +559,7 @@ def run_qwen25_3b_text_benchmark() -> dict[str, str]:
     gpu="A10G",
     timeout=60 * 60 * 8,
     volumes={REMOTE_DATA: data_volume},
+    secrets=[hf_secret],
 )
 def run_text_benchmark_wide() -> dict[str, str]:
     import subprocess
@@ -610,6 +622,7 @@ def run_text_benchmark_wide() -> dict[str, str]:
     gpu="A10G",
     timeout=60 * 60 * 8,
     volumes={REMOTE_DATA: data_volume},
+    secrets=[hf_secret],
 )
 def run_single_dataset_benchmark(
     train_manifest: str,
