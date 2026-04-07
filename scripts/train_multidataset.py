@@ -9,7 +9,7 @@ from pathlib import Path
 import torch
 import yaml
 from torch import nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 
 from brain_1.datasets.common import TemporalFeatureDataset, collate_temporal_batch
 from brain_1.models import MultiDatasetBrainModel, MultiDatasetBrainModelConfig
@@ -73,10 +73,12 @@ def run_training(config: TrainingConfig) -> None:
 
     inferred_feature_dim = dataset[0]["features"].shape[-1]
     dataset_output_dims = _infer_dataset_output_dims(dataset, val_dataset)
+    sampler = _build_sampler(dataset, data_config.get("dataset_weights"))
     dataloader = DataLoader(
         dataset,
         batch_size=int(optimization["batch_size"]),
-        shuffle=True,
+        shuffle=sampler is None,
+        sampler=sampler,
         collate_fn=collate_temporal_batch,
     )
     val_dataloader = (
@@ -228,6 +230,25 @@ def run_training(config: TrainingConfig) -> None:
 def _load_yaml(path: Path) -> dict:
     with path.open("r", encoding="utf-8") as handle:
         return yaml.safe_load(handle)
+
+
+def _build_sampler(
+    dataset: TemporalFeatureDataset,
+    dataset_weights: dict[str, float] | None,
+):
+    if not dataset_weights:
+        return None
+    weights = [
+        float(dataset_weights.get(record.dataset_name, 1.0))
+        for record in dataset.records
+    ]
+    if all(weight == weights[0] for weight in weights):
+        return None
+    return WeightedRandomSampler(
+        weights=weights,
+        num_samples=len(weights),
+        replacement=True,
+    )
 
 
 def _infer_dataset_output_dims(*datasets: TemporalFeatureDataset | None) -> dict[str, int]:

@@ -269,6 +269,9 @@ def run_multidataset_text_benchmark(
     eval_every: int = 25,
     max_steps: int = 300,
     init_checkpoint: str = "",
+    algonauts_weight: float = 1.0,
+    lebel_weight: float = 1.0,
+    bold_weight: float = 1.0,
 ) -> dict[str, str]:
     import subprocess
     from pathlib import Path
@@ -285,6 +288,11 @@ def run_multidataset_text_benchmark(
             "val_manifest_path": val_manifest if val_manifest else None,
             "synthetic_fallback_size": 0,
             "synthetic_seq_len": 0,
+            "dataset_weights": {
+                "algonauts2025": algonauts_weight,
+                "lebel2023": lebel_weight,
+                "bold_moments_left": bold_weight,
+            },
         },
         "optimization": {
             "batch_size": 2,
