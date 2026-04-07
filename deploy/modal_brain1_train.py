@@ -171,6 +171,227 @@ def download_git_annex_repo(
     volumes={REMOTE_DATA: data_volume},
     secrets=[hf_secret],
 )
+def build_algonauts_av_manifest_remote(
+    text_manifest: str,
+    video_root: str,
+    output_manifest: str,
+    skip_missing_videos: bool = True,
+) -> dict[str, str]:
+    import subprocess
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{REMOTE_REPO}/src"
+    cmd = [
+        "python",
+        f"{REMOTE_REPO}/scripts/build_algonauts_av_manifest_from_text.py",
+        "--text-manifest",
+        text_manifest,
+        "--video-root",
+        video_root,
+        "--output",
+        output_manifest,
+    ]
+    if skip_missing_videos:
+        cmd.append("--skip-missing-videos")
+    subprocess.run(cmd, check=True, env=env)
+    data_volume.commit()
+    return {"output_manifest": output_manifest}
+
+
+@app.function(
+    image=image,
+    timeout=60 * 60 * 8,
+    volumes={REMOTE_DATA: data_volume},
+    secrets=[hf_secret],
+)
+def sample_algonauts_video_frames_remote(
+    raw_manifest: str,
+    frames_root: str,
+    output_manifest: str,
+    max_frames: int = 0,
+) -> dict[str, str]:
+    import subprocess
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{REMOTE_REPO}/src"
+    cmd = [
+        "python",
+        f"{REMOTE_REPO}/scripts/sample_algonauts_video_frames.py",
+        "--raw-manifest",
+        raw_manifest,
+        "--frames-root",
+        frames_root,
+        "--output-manifest",
+        output_manifest,
+    ]
+    if max_frames:
+        cmd.extend(["--max-frames", str(max_frames)])
+    subprocess.run(cmd, check=True, env=env)
+    data_volume.commit()
+    return {"output_manifest": output_manifest, "frames_root": frames_root}
+
+
+@app.function(
+    image=image,
+    gpu="A10G",
+    timeout=60 * 60 * 8,
+    volumes={REMOTE_DATA: data_volume},
+    secrets=[hf_secret],
+)
+def extract_algonauts_image_features_remote(
+    frame_manifest: str,
+    output_manifest: str,
+    feature_root: str,
+    model_id: str = "google/siglip-base-patch16-224",
+    batch_size: int = 16,
+    device: str = "cuda",
+    share_features_across_subjects: bool = True,
+) -> dict[str, str]:
+    import subprocess
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{REMOTE_REPO}/src"
+    cmd = [
+        "python",
+        f"{REMOTE_REPO}/scripts/extract_algonauts_image_features.py",
+        "--frame-manifest",
+        frame_manifest,
+        "--output-manifest",
+        output_manifest,
+        "--feature-root",
+        feature_root,
+        "--model-id",
+        model_id,
+        "--batch-size",
+        str(batch_size),
+        "--device",
+        device,
+    ]
+    if share_features_across_subjects:
+        cmd.append("--share-features-across-subjects")
+    subprocess.run(cmd, check=True, env=env)
+    data_volume.commit()
+    return {"output_manifest": output_manifest, "feature_root": feature_root}
+
+
+@app.function(
+    image=image,
+    timeout=60 * 60 * 8,
+    volumes={REMOTE_DATA: data_volume},
+    secrets=[hf_secret],
+)
+def extract_algonauts_audio_clips_remote(
+    raw_manifest: str,
+    clips_root: str,
+    output_manifest: str,
+    max_clips: int = 0,
+) -> dict[str, str]:
+    import subprocess
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{REMOTE_REPO}/src"
+    cmd = [
+        "python",
+        f"{REMOTE_REPO}/scripts/extract_algonauts_audio_clips.py",
+        "--raw-manifest",
+        raw_manifest,
+        "--clips-root",
+        clips_root,
+        "--output-manifest",
+        output_manifest,
+    ]
+    if max_clips:
+        cmd.extend(["--max-clips", str(max_clips)])
+    subprocess.run(cmd, check=True, env=env)
+    data_volume.commit()
+    return {"output_manifest": output_manifest, "clips_root": clips_root}
+
+
+@app.function(
+    image=image,
+    gpu="A10G",
+    timeout=60 * 60 * 8,
+    volumes={REMOTE_DATA: data_volume},
+    secrets=[hf_secret],
+)
+def extract_algonauts_audio_features_remote(
+    clip_manifest: str,
+    output_manifest: str,
+    feature_root: str,
+    model_id: str = "facebook/w2v-bert-2.0",
+    batch_size: int = 8,
+    device: str = "cuda",
+    share_features_across_subjects: bool = True,
+) -> dict[str, str]:
+    import subprocess
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{REMOTE_REPO}/src"
+    cmd = [
+        "python",
+        f"{REMOTE_REPO}/scripts/extract_algonauts_audio_features.py",
+        "--clip-manifest",
+        clip_manifest,
+        "--output-manifest",
+        output_manifest,
+        "--feature-root",
+        feature_root,
+        "--model-id",
+        model_id,
+        "--batch-size",
+        str(batch_size),
+        "--device",
+        device,
+    ]
+    if share_features_across_subjects:
+        cmd.append("--share-features-across-subjects")
+    subprocess.run(cmd, check=True, env=env)
+    data_volume.commit()
+    return {"output_manifest": output_manifest, "feature_root": feature_root}
+
+
+@app.function(
+    image=image,
+    timeout=60 * 30,
+    volumes={REMOTE_DATA: data_volume},
+    secrets=[hf_secret],
+)
+def build_trimodal_manifest_remote(
+    text_manifest: str,
+    audio_manifest: str,
+    video_manifest: str,
+    output_manifest: str,
+) -> dict[str, str]:
+    import subprocess
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{REMOTE_REPO}/src"
+    subprocess.run(
+        [
+            "python",
+            f"{REMOTE_REPO}/scripts/build_trimodal_manifest.py",
+            "--text-manifest",
+            text_manifest,
+            "--audio-manifest",
+            audio_manifest,
+            "--video-manifest",
+            video_manifest,
+            "--output",
+            output_manifest,
+        ],
+        check=True,
+        env=env,
+    )
+    data_volume.commit()
+    return {"output_manifest": output_manifest}
+
+
+@app.function(
+    image=image,
+    timeout=60 * 60,
+    volumes={REMOTE_DATA: data_volume},
+    secrets=[hf_secret],
+)
 def build_lebel2023_text_manifest_remote(
     subjects_csv: str,
     stories_csv: str,

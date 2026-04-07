@@ -81,8 +81,11 @@ def main() -> None:
         else:
             feature_tensor = torch.load(feature_path, map_location="cpu")["features"]
 
-        with h5py.File(row["target_h5_path"], "r") as target_handle:
-            target = torch.tensor(target_handle[row["target_h5_key"]][:], dtype=torch.float32)
+        if row.get("target_path"):
+            target = torch.load(Path(row["target_path"]), map_location="cpu")["target"].float()
+        else:
+            with h5py.File(row["target_h5_path"], "r") as target_handle:
+                target = torch.tensor(target_handle[row["target_h5_key"]][:], dtype=torch.float32)
 
         length = min(feature_tensor.shape[0], target.shape[0])
         target = target[:length]
@@ -96,7 +99,7 @@ def main() -> None:
                 "stimulus_id": row["stimulus_id"],
                 "feature_path": str(feature_path),
                 "target_path": str(target_path),
-                "split": "train" if int(row["season"]) < 7 else "test",
+                "split": row.get("split", ("train" if int(row["season"]) < 7 else "test")),
             }
         )
         print(f"processed video stimulus={row['stimulus_id']} subject={row['subject_id']}")

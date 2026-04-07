@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 import h5py
+import torch
 
 
 TR_SECONDS = 1.49
@@ -58,8 +59,11 @@ def main() -> None:
         clip_dir = clips_root / row["stimulus_id"]
 
         if row["stimulus_id"] not in processed_stimuli:
-            with h5py.File(row["target_h5_path"], "r") as target_handle:
-                length = int(target_handle[row["target_h5_key"]].shape[0])
+            if "target_path" in row:
+                length = int(torch.load(Path(row["target_path"]), map_location="cpu")["target"].shape[0])
+            else:
+                with h5py.File(row["target_h5_path"], "r") as target_handle:
+                    length = int(target_handle[row["target_h5_key"]].shape[0])
             if args.max_clips > 0:
                 length = min(length, args.max_clips)
 
@@ -79,8 +83,10 @@ def main() -> None:
                 "season": row["season"],
                 "stimulus_id": row["stimulus_id"],
                 "clip_dir": str(clip_dir),
-                "target_h5_path": row["target_h5_path"],
-                "target_h5_key": row["target_h5_key"],
+                "target_h5_path": row.get("target_h5_path"),
+                "target_h5_key": row.get("target_h5_key"),
+                "target_path": row.get("target_path"),
+                "split": row.get("split", "train"),
             }
         )
         print(f"prepared audio clips for stimulus={row['stimulus_id']} subject={row['subject_id']}")
