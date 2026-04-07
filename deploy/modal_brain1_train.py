@@ -388,6 +388,68 @@ def build_trimodal_manifest_remote(
 
 @app.function(
     image=image,
+    gpu="A10G",
+    timeout=60 * 60 * 8,
+    volumes={REMOTE_DATA: data_volume},
+    secrets=[hf_secret],
+)
+def run_trimodal_benchmark(
+    train_manifest: str,
+    val_manifest: str,
+    output_dir: str,
+    max_steps: int = 200,
+    lr: float = 1.0e-4,
+    eval_every: int = 25,
+) -> dict[str, str]:
+    import subprocess
+    from pathlib import Path
+    import yaml
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{REMOTE_REPO}/src"
+    config_path = f"{REMOTE_REPO}/configs/trimodal_modal.yaml"
+
+    config_payload = {
+        "data": {
+            "manifest_path": train_manifest,
+            "val_manifest_path": val_manifest,
+        },
+        "optimization": {
+            "batch_size": 2,
+            "lr": lr,
+            "weight_decay": 0.01,
+            "max_steps": max_steps,
+            "warmup_steps": 0,
+        },
+        "loss": {
+            "mse_weight": 1.0,
+            "correlation_weight": 0.0,
+        },
+        "training": {
+            "device": "cuda",
+            "log_every": 10,
+            "eval_every": eval_every,
+            "grad_clip_norm": 1.0,
+            "output_dir": output_dir,
+        },
+    }
+
+    Path(config_path).write_text(yaml.safe_dump(config_payload), encoding="utf-8")
+    subprocess.run(
+        [
+            "python",
+            f"{REMOTE_REPO}/scripts/train_trimodal.py",
+            "--config",
+            config_path,
+        ],
+        check=True,
+        env=env,
+    )
+    return {"output_dir": output_dir}
+
+
+@app.function(
+    image=image,
     timeout=60 * 60,
     volumes={REMOTE_DATA: data_volume},
     secrets=[hf_secret],
