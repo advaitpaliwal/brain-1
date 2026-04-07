@@ -146,8 +146,6 @@ def download_git_annex_repo(
 
     src_root = Path(tmp_output)
     dst_root = Path(final_output)
-    if dst_root.exists():
-        shutil.rmtree(dst_root)
     dst_root.mkdir(parents=True, exist_ok=True)
 
     for path in src_root.rglob("*"):
